@@ -1,0 +1,21 @@
+{
+  "name": "@queueforge/shared",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./job": "./src/job.ts",
+     "./job-schema": "./src/job-schema.ts"
+  },
+  "dependencies": {
+    "zod": "^4.5.4"
+  }
+}
