@@ -11,10 +11,16 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@queueforge/shared": "^1.0.0",
-    "express": "^5.2.1"
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "@queueforge/shared": "*",
+    "dotenv": "^17.2.0",
+    "express": "^5.2.1",
+    "pg": "^8.16.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6"
+    "@types/express": "^5.0.6",
+    "@types/pg": "^8.15.0",
+    "prisma": "7.10.0"
   }
 }

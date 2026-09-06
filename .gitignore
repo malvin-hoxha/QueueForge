@@ -27,3 +27,9 @@ Thumbs.db
 # Editors
 .vscode/
 .idea/
+
+# Prisma generated client
+apps/api/src/generated/prisma/
+
+# TypeScript
+*.tsbuildinfo
