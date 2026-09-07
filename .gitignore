@@ -30,6 +30,7 @@ Thumbs.db
 
 # Prisma generated client
 apps/api/src/generated/prisma/
+packages/database/src/generated/prisma/
 
 # TypeScript
 *.tsbuildinfo

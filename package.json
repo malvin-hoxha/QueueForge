@@ -14,7 +14,8 @@
   "workspaces": [
     "apps/api",
     "apps/worker",
-    "packages/shared"
+    "packages/shared",
+    "packages/database"
   ],
   "devDependencies": {
     "@types/node": "^26.4.1",
