@@ -2,6 +2,7 @@ import express from 'express'
 
 import { CreateJobInputSchema } from "@queueforge/shared/job-schema";
 import { prisma } from "./lib/prisma.js";
+import { jobQueue } from "./lib/job-queue.js";
 
 import { env } from "./config/env.js";
 
@@ -26,6 +27,10 @@ app.post('/jobs', async (req, res) => {
             type: input.type,
             payload: input.payload
         }
+    });
+
+    await jobQueue.add(job.type, {
+       jobId: job.id
     });
 
     res.status(202).json(job);
