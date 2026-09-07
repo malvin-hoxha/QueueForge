@@ -1,18 +1,17 @@
 import express from 'express'
-import { randomUUID } from "node:crypto";
 
-import type { Job } from '@queueforge/shared/job'
 import { CreateJobInputSchema } from "@queueforge/shared/job-schema";
+import { prisma } from "./lib/prisma.js";
+
+import { env } from "./config/env.js";
 
 const app = express();
 
-const PORT = 3000;
-
-const jobs = new Map<string, Job>();
+const PORT = env.PORT;
 
 app.use(express.json());
 
-app.post('/jobs', (req, res) => {
+app.post('/jobs', async (req, res) => {
     const parsedBody = CreateJobInputSchema.safeParse(req.body); 
 
     if(!parsedBody.success) {
@@ -22,28 +21,26 @@ app.post('/jobs', (req, res) => {
 
     const input = parsedBody.data;
 
-    const job: Job = {
-        ...input,
-        id: randomUUID(),
-        status: 'WAITING',
-        attempts: 0,
-        result: null,
-        error: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-    }
-
-    jobs.set(job.id, job);
+    const job = await prisma.job.create({
+        data: {
+            type: input.type,
+            payload: input.payload
+        }
+    });
 
     res.status(202).json(job);
 
 
 });
 
-app.get('/jobs/:id', (req, res) => {
+app.get('/jobs/:id', async (req, res) => {
     const id = req.params.id;
 
-    const job = jobs.get(id);
+    const job = await prisma.job.findUnique ({
+        where: {
+            id
+        }
+    })
 
     if (!job) {
         res.status(404).json({message: "Job not found"});
@@ -58,5 +55,5 @@ app.get('/health', (_req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log('Listening on port 3000');
+    console.log(`Listening on port ${PORT}`);
 });
