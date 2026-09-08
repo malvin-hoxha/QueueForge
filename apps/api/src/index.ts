@@ -2,7 +2,6 @@ import express from 'express'
 
 import { CreateJobInputSchema } from "@queueforge/shared/job-schema";
 import { prisma } from "./lib/prisma.js";
-import { jobQueue } from "./lib/job-queue.js";
 
 import { env } from "./config/env.js";
 

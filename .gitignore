@@ -37,3 +37,7 @@ packages/database/src/generated/prisma/
 
 #report generated
 apps/worker/storage/reports/
+
+.env
+.env.*
+!.env.example
