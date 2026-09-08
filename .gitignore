@@ -34,3 +34,6 @@ packages/database/src/generated/prisma/
 
 # TypeScript
 *.tsbuildinfo
+
+#report generated
+apps/worker/storage/reports/
