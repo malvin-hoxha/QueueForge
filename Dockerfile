@@ -15,5 +15,5 @@ RUN npm ci
 COPY . .
 
 RUN cd packages/database && \
-    DATABASE_URL="postgresql://queueforge:queueforge@postgres:5432/queueforge?schema=public" \
+    DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" \
     npx prisma generate
