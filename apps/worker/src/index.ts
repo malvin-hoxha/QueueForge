@@ -1,6 +1,11 @@
 import { Worker } from "bullmq";
 import { env } from "./config/env.js";
 import { prisma } from "./lib/prisma.js";
+import { generateReport  } from "./handlers/generate-report.js"; 
+import { sendEmail } from "./handlers/send-email.js";
+
+import { CreateJobInputSchema } from "@queueforge/shared/job-schema";
+ 
 
 const worker = new Worker("jobs", 
     async (bullJob) => {
@@ -29,6 +34,22 @@ const worker = new Worker("jobs",
         });
 
         console.log(`Processing ${dbJob.type}...`);
+
+        const parsedJob = CreateJobInputSchema.parse({
+            type: dbJob.type,
+            payload: dbJob.payload,
+        });
+
+        switch (parsedJob.type) {
+            case "GENERATE_REPORT":
+                await generateReport(parsedJob.payload);
+                break;
+            case "SEND_EMAIL":
+                await sendEmail(parsedJob.payload);
+                break;
+            default:
+                throw new Error("Unknown job type");
+        }
 
         await prisma.job.update({
             where: {
