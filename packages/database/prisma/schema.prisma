@@ -25,6 +25,19 @@ enum JobStatus {
   FAILED
 }
 
+enum OutboxEventType {
+  JOB_CREATED
+}
+
+model OutboxEvent {
+  id String @id @default(uuid())
+  type OutboxEventType
+  payload Json
+  published Boolean @default(false)
+  createdAt DateTime @default(now())
+  publishedAt DateTime?
+}
+
 model Job {
   id String @id @default(uuid())
   type JobType 

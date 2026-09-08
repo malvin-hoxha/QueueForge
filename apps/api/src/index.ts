@@ -22,21 +22,24 @@ app.post('/jobs', async (req, res) => {
 
     const input = parsedBody.data;
 
-    const job = await prisma.job.create({
-        data: {
-            type: input.type,
-            payload: input.payload
-        }
-    });
+    const job = await prisma.$transaction(async (tx) => {
+        const createdJob = await tx.job.create({
+            data: {
+                type: input.type,
+                payload: input.payload
+            }
+        });
 
-    await jobQueue.add(job.type, {
-       jobId: job.id
-    }, {
-        attempts: 3,
-        backoff: {
-            type: "fixed",
-            delay: 2000,
-        },
+        await tx.outboxEvent.create({
+            data: {
+                type: "JOB_CREATED",
+                payload: {
+                    jobId: createdJob.id
+                }
+            }
+        });
+
+        return createdJob;
     });
 
     res.status(202).json({
