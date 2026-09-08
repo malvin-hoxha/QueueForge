@@ -12,11 +12,11 @@ export interface SendEmailPayload {
   body: string;
 };
 
-export interface GenerateReportResult {
+export type GenerateReportResult = {
   filePath: string;
 }
 
-export interface SendEmailResult {
+export type SendEmailResult = {
   messageId: string;
 }
 

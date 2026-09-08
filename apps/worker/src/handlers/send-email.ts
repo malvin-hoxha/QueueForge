@@ -1,5 +1,9 @@
-import type { SendEmailPayload } from "@queueforge/shared/job";
+import type { SendEmailPayload, SendEmailResult } from "@queueforge/shared/job";
 
-export async function sendEmail(payload: SendEmailPayload) {
+export async function sendEmail(payload: SendEmailPayload): Promise<SendEmailResult> {
     console.log(`Sending email to ${payload.to}...`);
-}
+
+    return {
+        messageId: "123"
+    }
+};

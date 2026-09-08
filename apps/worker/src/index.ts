@@ -40,12 +40,14 @@ const worker = new Worker("jobs",
             payload: dbJob.payload,
         });
 
+        let result;
+
         switch (parsedJob.type) {
             case "GENERATE_REPORT":
-                await generateReport(parsedJob.payload);
+                result = await generateReport(parsedJob.payload);
                 break;
             case "SEND_EMAIL":
-                await sendEmail(parsedJob.payload);
+                result = await sendEmail(parsedJob.payload);
                 break;
             default:
                 throw new Error("Unknown job type");
@@ -56,7 +58,8 @@ const worker = new Worker("jobs",
                 id: dbJob.id
             },
             data: {
-                status: "COMPLETED"
+                status: "COMPLETED",
+                result
             }
         });
     },
