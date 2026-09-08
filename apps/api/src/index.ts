@@ -31,6 +31,12 @@ app.post('/jobs', async (req, res) => {
 
     await jobQueue.add(job.type, {
        jobId: job.id
+    }, {
+        attempts: 3,
+        backoff: {
+            type: "fixed",
+            delay: 2000,
+        },
     });
 
     res.status(202).json(job);

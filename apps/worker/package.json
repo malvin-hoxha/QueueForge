@@ -10,6 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@queueforge/database": "*",
     "bullmq": "^6.3.4",
     "dotenv": "^17.4.2",
     "ioredis": "^6.0.0",
