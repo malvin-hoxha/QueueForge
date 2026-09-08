@@ -39,7 +39,12 @@ app.post('/jobs', async (req, res) => {
         },
     });
 
-    res.status(202).json(job);
+    res.status(202).json({
+        message: "Job accepted",
+        jobId: job.id,
+        status: job.status,
+        statusUrl: `/jobs/${job.id}`,
+    });
 
 
 });
