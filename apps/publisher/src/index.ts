@@ -123,13 +123,31 @@ function sleep(ms: number) {
   });
 }
 
-while (true) {
+let isShuttingDown = false;
+
+process.on("SIGINT", () => {
+  console.log("Received SIGINT. Shutting down publisher...");
+  isShuttingDown = true;
+});
+
+process.on("SIGTERM", () => {
+  console.log("Received SIGTERM. Shutting down publisher...");
+  isShuttingDown = true;
+});
+
+while (!isShuttingDown) {
     try {
         await publishOutboxEvents();
         
     } catch (error) {
         console.error("Publisher cycle failed",error);
     }
-    await sleep(1000);
-  
+    if (!isShuttingDown) {
+        await sleep(1000);
+    }
 }
+
+await jobQueue.close();
+await prisma.$disconnect();
+
+console.log("Publisher shut down gracefully.");

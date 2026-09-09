@@ -89,8 +89,14 @@ worker.on("failed", async (bullJob, error) => {
 
 });
 
+let isShuttingDown = false;
+
 async function shutdown(signal: string) {
   console.log(`Received ${signal}. Shutting down worker...`);
+
+  if(isShuttingDown) return;
+
+  isShuttingDown = true;
 
   await worker.close();
 
