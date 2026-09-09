@@ -2,14 +2,17 @@ import { prisma } from "./lib/prisma.js";
 import { jobQueue } from "./lib/job-queue.js";
 import { z } from "zod";
 
+const MAX_OUTBOX_ATTEMPTS = 5;
+
 const OutboxJobPayloadSchema = z.object({
-  jobId: z.uuid(),
+  jobId: z.uuid().min(1000),
 });
 
 async function publishOutboxEvents() {
     const events = await prisma.outboxEvent.findMany({
         where: {
-            published: false
+            published: false,
+            failed: false
         },
         orderBy: {
             createdAt: "asc"
@@ -29,6 +32,7 @@ async function publishOutboxEvents() {
                 where: {
                     id: event.id,
                     published: false,
+                    failed: false,
                     OR: [
                         {
                             claimedAt: null
@@ -96,18 +100,42 @@ async function publishOutboxEvents() {
             console.log(`Claimed outbox event ${event.id}`);
         } catch (error) {
 
+            const errorMessage = error instanceof Error ? error.message : "Unknown publisher error";
+
             if (claimedAt) {
-                await prisma.outboxEvent.updateMany({
+                const finalFailure = await prisma.outboxEvent.updateMany({
                     where: {
                         id: event.id,
                         published: false,
-                        claimedAt
+                        failed: false,
+                        claimedAt,
+                        attempts: { gte: MAX_OUTBOX_ATTEMPTS - 1 }   
                     },
                     data: {
+                        attempts: { increment: 1 },
+                        lastError: errorMessage,
+                        failed: true,
                         claimedAt: null
                     }
-                })
+                });
+
+                if (finalFailure.count === 0) {
+                    await prisma.outboxEvent.updateMany({
+                        where: {
+                            id: event.id,
+                            published: false,
+                            failed: false,
+                            claimedAt,
+                        },
+                        data: {
+                            attempts: { increment: 1 },
+                            lastError: errorMessage,
+                            claimedAt: null,
+                        },
+                    });
+                }
             }
+
             console.error(
                 `Failed to publish outbox event ${event.id}`,
                 error,

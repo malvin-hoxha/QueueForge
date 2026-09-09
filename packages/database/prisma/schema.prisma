@@ -37,6 +37,9 @@ model OutboxEvent {
   claimedAt DateTime?
   createdAt DateTime @default(now())
   publishedAt DateTime?
+  attempts  Int     @default(0)
+  lastError String?
+  failed    Boolean @default(false)
 }
 
 model Job {
