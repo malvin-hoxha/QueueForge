@@ -3,6 +3,8 @@ import express from 'express'
 import { CreateJobInputSchema } from "@queueforge/shared/job-schema";
 import { prisma } from "./lib/prisma.js";
 
+import { errorHandler } from './middleware/error-handler.js';
+
 import { env } from "./config/env.js";
 
 const app = express();
@@ -71,6 +73,8 @@ app.get('/jobs/:id', async (req, res) => {
 app.get('/health', (_req, res) => {
     res.status(200).json({status: 'ok'});
 });
+
+app.use(errorHandler);
 
 const server = app.listen(PORT, () => {
     console.log(`Listening on port ${PORT}`);
