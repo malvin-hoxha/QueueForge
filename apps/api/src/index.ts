@@ -72,6 +72,32 @@ app.get('/health', (_req, res) => {
     res.status(200).json({status: 'ok'});
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`Listening on port ${PORT}`);
+});
+
+let isShuttingDown = false;
+
+async function shutdown(signal: string) {
+    if (isShuttingDown) return;
+
+    isShuttingDown = true;
+
+    console.log(`Received ${signal}. Shutting down API...`);
+
+    server.close(async () => {
+        await prisma.$disconnect();
+        console.log("API shut down gracefully.");
+
+        process.exit(0);
+
+    });
+};
+
+process.on("SIGINT", () => {
+  void shutdown("SIGINT");
+});
+
+process.on("SIGTERM", () => {
+  void shutdown("SIGTERM");
 });
