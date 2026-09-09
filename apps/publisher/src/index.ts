@@ -1,6 +1,5 @@
 import { prisma } from "./lib/prisma.js";
 import { jobQueue } from "./lib/job-queue.js";
-import { env } from "./config/env.js";
 import { z } from "zod";
 
 const OutboxJobPayloadSchema = z.object({
@@ -19,7 +18,37 @@ async function publishOutboxEvents() {
     });
 
     for (const event of events) {
+        let claimedAt: Date | null = null;
+
         try {
+            const claimTime = new Date();
+
+            const claimTimeout = new Date(Date.now() - 30_000);
+
+            const claimResult = await prisma.outboxEvent.updateMany({
+                where: {
+                    id: event.id,
+                    published: false,
+                    OR: [
+                        {
+                            claimedAt: null
+                        },
+                        {
+                            claimedAt: { lt: claimTimeout }
+                        }
+                    ]
+                },
+                data: {
+                    claimedAt: claimTime,
+                }
+            });
+
+            if (claimResult.count === 0) {
+                continue;
+            }
+
+            claimedAt = claimTime;
+
             const payload = OutboxJobPayloadSchema.parse(event.payload);
 
             const dbJob = await prisma.job.findUnique({
@@ -45,16 +74,40 @@ async function publishOutboxEvents() {
                 }
             });
 
-            await prisma.outboxEvent.update({
+            const publishResult = await prisma.outboxEvent.updateMany({
                 where: {
-                    id: event.id
+                    id: event.id,
+                    published: false,
+                    claimedAt,
                 },
                 data: {
                     published: true,
-                    publishedAt: new Date()
-                }
+                    publishedAt: new Date(),
+                    claimedAt: null,
+                },
             });
+
+            if (publishResult.count === 0) {
+                throw new Error(
+                    `Lost claim ownership for outbox event ${event.id}`,
+                );
+            }
+
+            console.log(`Claimed outbox event ${event.id}`);
         } catch (error) {
+
+            if (claimedAt) {
+                await prisma.outboxEvent.updateMany({
+                    where: {
+                        id: event.id,
+                        published: false,
+                        claimedAt
+                    },
+                    data: {
+                        claimedAt: null
+                    }
+                })
+            }
             console.error(
                 `Failed to publish outbox event ${event.id}`,
                 error,

@@ -34,6 +34,7 @@ model OutboxEvent {
   type OutboxEventType
   payload Json
   published Boolean @default(false)
+  claimedAt DateTime?
   createdAt DateTime @default(now())
   publishedAt DateTime?
 }
