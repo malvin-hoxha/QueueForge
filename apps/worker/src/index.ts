@@ -3,6 +3,7 @@ import { env } from "./config/env.js";
 import { prisma } from "./lib/prisma.js";
 
 import { processJob } from "./process-job.js";
+import { handleJobFailure } from "./handle-job-failure.js";
 
 const worker = new Worker("jobs", processJob, {
     connection: {
@@ -15,20 +16,7 @@ const worker = new Worker("jobs", processJob, {
 worker.on("failed", async (bullJob, error) => {
     if (!bullJob) return;
 
-    const maxAttempts = bullJob.opts.attempts ?? 1;
-    const attemptsMade = bullJob.attemptsMade;
-
-    const status = attemptsMade >= maxAttempts ? "FAILED" : "RETRYING";
-
-    await prisma.job.update({
-        where: {
-            id: bullJob.data.jobId
-        },
-        data: {
-            status,
-            error: error.message
-        }
-    });
+    await handleJobFailure(bullJob, error);
 
 });
 
