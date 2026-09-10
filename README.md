@@ -1,5 +1,7 @@
 # QueueForge
 
+[![CI](https://github.com/malvin-hoxha/QueueForge/actions/workflows/ci.yml/badge.svg)](https://github.com/malvin-hoxha/QueueForge/actions/workflows/ci.yml)
+
 **QueueForge is a reliable asynchronous job-processing system built with Node.js, PostgreSQL, Redis, and BullMQ.** It demonstrates practical distributed-systems patterns including the **Transactional Outbox**, lease-based publisher coordination, retries and backoff, idempotent queue publishing, poison-event handling, at-least-once processing, and graceful shutdown.
 
 At a glance:
