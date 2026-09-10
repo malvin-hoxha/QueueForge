@@ -32,6 +32,8 @@ jobs:
         run: npx prisma generate
 
       - name: Run tests
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
         run: npm test --workspaces --if-present
 
       - name: Typecheck API
