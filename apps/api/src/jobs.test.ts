@@ -88,3 +88,42 @@ describe("POST /jobs", () => {
     });
   });
 });
+
+describe("GET /jobs/:id", () => {
+  it("returns 404 when job does not exist", async () => {
+    mocks.findUnique.mockResolvedValue(null);
+
+    const response = await request(app)
+      .get("/jobs/job-123");
+
+    expect(response.status).toBe(404);
+
+    expect(response.body).toEqual({
+      message: "Job not found",
+    });
+  });
+
+  it("returns the job when it exists", async () => {
+    const job = {
+      id: "job-123",
+      type: "SEND_EMAIL",
+      payload: {
+        to: "test@example.com",
+        subject: "Test",
+        body: "Hello",
+      },
+      status: "WAITING",
+      attempts: 0,
+      result: null,
+      error: null,
+    };
+
+    mocks.findUnique.mockResolvedValue(job);
+
+    const response = await request(app)
+      .get("/jobs/job-123");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(job);
+  });
+});
