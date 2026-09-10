@@ -20,6 +20,11 @@ const worker = new Worker("jobs", async (bullJob) => {
         throw new Error("Job not found in database");
     }
 
+    if (dbJob.status === "COMPLETED") {
+        console.log(`Job ${dbJob.id} already completed. Skipping.`);
+        return;
+    }
+
     await prisma.job.update({
         where: {
             id: dbJob.id
@@ -92,17 +97,19 @@ worker.on("failed", async (bullJob, error) => {
 let isShuttingDown = false;
 
 async function shutdown(signal: string) {
-  console.log(`Received ${signal}. Shutting down worker...`);
+    console.log(`Received ${signal}. Shutting down worker...`);
 
-  if(isShuttingDown) return;
+    if(isShuttingDown) return;
 
-  isShuttingDown = true;
+    isShuttingDown = true;
 
-  await worker.close();
+    console.log(`Received ${signal}. Shutting down worker...`);
 
-  await prisma.$disconnect();
+    await worker.close();
 
-  process.exit(0);
+    await prisma.$disconnect();
+
+    process.exit(0);
 }
 
 process.on("SIGINT", () => {
