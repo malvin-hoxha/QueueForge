@@ -5,7 +5,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +25,9 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/pg": "^8.15.0",
-    "prisma": "7.10.0"
+    "@types/supertest": "^7.2.1",
+    "prisma": "7.10.0",
+    "supertest": "^7.2.2",
+    "vitest": "^5.0.0"
   }
 }
