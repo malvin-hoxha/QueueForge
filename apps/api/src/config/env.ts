@@ -4,8 +4,6 @@ import "dotenv/config";
 const envSchema = z.object({
     PORT: z.coerce.number().int().positive().default(3000),
     DATABASE_URL: z.string().min(1),
-    REDIS_HOST: z.string().min(1),
-    REDIS_PORT: z.coerce.number().int().positive().default(6379)
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
