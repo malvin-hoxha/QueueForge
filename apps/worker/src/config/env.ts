@@ -3,7 +3,7 @@ import { z } from "zod";
 
 const envSchema = z.object({
     REDIS_HOST: z.string().min(1),
-    REDIS_PORT: z.coerce.number().int().positive().default(6379),
+    REDIS_PORT: z.coerce.number().int().positive().default(3000),
     DATABASE_URL: z.string().min(1),
     SMTP_HOST: z.string().min(1),
     SMTP_PORT: z.coerce.number().int().positive().default(1025)

@@ -6,7 +6,8 @@
   "private": true,
   "scripts": {
     "dev:api": "npm run dev -w api",
-    "dev:worker": "npm run dev -w worker"
+    "dev:worker": "npm run dev -w worker",
+    "dev:publisher": "npm run dev -w publisher"
   },
   "keywords": [],
   "author": "",
