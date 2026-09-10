@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +20,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@types/nodemailer": "^8.0.1"
+    "@types/nodemailer": "^8.0.1",
+    "vitest": "^5.0.0"
   }
 }
