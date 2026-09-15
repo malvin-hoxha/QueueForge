@@ -24,3 +24,6 @@ spec:
           command: ["npm", "run", "dev", "-w", "api"]
           ports:
             - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: queueforge-config 
