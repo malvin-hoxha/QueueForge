@@ -27,3 +27,5 @@ spec:
           envFrom:
             - configMapRef:
                 name: queueforge-config 
+            - secretRef:
+                name: queueforge-secret
