@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: publisher
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: publisher
+
+  template:
+    metadata:
+      labels:
+        app: publisher
+
+    spec:
+      containers:
+        - name: publisher
+          image: queueforge-publisher:latest
+          imagePullPolicy: Never
+          command:  ["npm", "run", "dev", "-w", "publisher"]
+          envFrom:
+            - configMapRef:
+                name: queueforge-config
+            - secretRef:
+                name: queueforge-secret

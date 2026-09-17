@@ -5,5 +5,9 @@ metadata:
   name: queueforge-config
 
 data:
+  REDIS_HOST: "redis"
   REDIS_URL: "redis://redis:6379"
+  REDIS_PORT: "6379"
+  SMTP_HOST: "mailpit"
+  SMTP_PORT: "1025"
 
