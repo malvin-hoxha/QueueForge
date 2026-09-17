@@ -41,3 +41,5 @@ apps/worker/storage/reports/
 .env
 .env.*
 !.env.example
+
+queueforge-backup.sql
