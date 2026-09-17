@@ -2,30 +2,34 @@
 
 [![CI](https://github.com/malvin-hoxha/QueueForge/actions/workflows/ci.yml/badge.svg)](https://github.com/malvin-hoxha/QueueForge/actions/workflows/ci.yml)
 
-**QueueForge is a reliable asynchronous job-processing system built with Node.js, PostgreSQL, Redis, and BullMQ.** It demonstrates practical distributed-systems patterns including the **Transactional Outbox**, lease-based publisher coordination, retries and backoff, idempotent queue publishing, poison-event handling, at-least-once processing, and graceful shutdown.
+**QueueForge is a reliable asynchronous job-processing system built with
+Node.js, PostgreSQL, Redis, and BullMQ.**
 
-At a glance:
+It demonstrates practical distributed-systems and backend reliability
+patterns including:
 
-```text
-HTTP API
-   ↓
-PostgreSQL
-Job + OutboxEvent
-   ↓
-Publisher
-   ↓
-Redis / BullMQ
-   ↓
-Worker
-   ↓
-Email / Report
-```
+-   Transactional Outbox
+-   atomic publisher claiming
+-   lease-based crash recovery
+-   idempotent queue publishing
+-   retries and backoff
+-   poison-event handling
+-   at-least-once processing
+-   graceful shutdown
+-   Kubernetes scaling, health probes, and self-healing
 
-The project focuses on the reliability problems that appear when an application accepts work now but executes it later: failed queue publishes, retries, duplicate delivery, concurrent publishers, process crashes, and recovery.
+The project focuses on the reliability problems that appear when an
+application accepts work now but executes it later: failed queue
+publishes, duplicate delivery, concurrent publishers, process crashes,
+worker recovery, and infrastructure failures.
+
+------------------------------------------------------------------------
 
 ## Architecture
 
-```mermaid
+### Application architecture
+
+``` mermaid
 flowchart LR
     Client[Client]
     API[Express API]
@@ -51,9 +55,9 @@ flowchart LR
     Worker -->|GENERATE_REPORT| Files
 ```
 
-Main flow:
+### Main flow
 
-```text
+``` text
 Client
   ↓
 POST /jobs
@@ -73,22 +77,53 @@ Job result persisted in PostgreSQL
 GET /jobs/:id
 ```
 
+### Kubernetes deployment
+
+``` text
+                    Kubernetes Cluster
+                           │
+             ┌─────────────┴─────────────┐
+             │                           │
+       queueforge-api              worker Deployment
+        Deployment                   replicas: 3
+          │                           │ │ │
+       ┌──┴──┐                       Pods
+       │     │                        │
+      Pod   Pod                 BullMQ / Redis
+       │     │                        │
+       └──┬──┘                        │
+          │                           │
+       API Service                    │
+          │                           │
+          ├───────────────┐           │
+          │               │           │
+      PostgreSQL        Redis      PostgreSQL
+        + PVC          Service
+```
+
+Kubernetes is used as a deployment and infrastructure environment.
+Docker Compose remains the simpler local-development environment.
+
+------------------------------------------------------------------------
+
 ## Why QueueForge?
 
-A simple background-job implementation might perform two independent operations:
+A simple background-job implementation might perform two independent
+operations:
 
-```text
+``` text
 1. Insert Job into PostgreSQL
 2. Add Job to Redis / BullMQ
 ```
 
 This introduces a **dual-write problem**.
 
-PostgreSQL and Redis are separate systems, so a PostgreSQL transaction cannot make both operations atomic.
+PostgreSQL and Redis are separate systems, so a PostgreSQL transaction
+cannot make both operations atomic.
 
 For example:
 
-```text
+``` text
 Job inserted into PostgreSQL ✅
 ↓
 Process crashes 💥
@@ -100,9 +135,10 @@ Job remains WAITING forever
 
 QueueForge solves this using the **Transactional Outbox pattern**.
 
-The API writes both the Job and the intent to publish it inside the same PostgreSQL transaction:
+The API writes both the Job and the intent to publish it inside the same
+PostgreSQL transaction:
 
-```text
+``` text
 PostgreSQL transaction
   ├── Job
   └── OutboxEvent(JOB_CREATED)
@@ -110,11 +146,13 @@ PostgreSQL transaction
 
 A separate Publisher later moves the event from PostgreSQL into BullMQ.
 
+------------------------------------------------------------------------
+
 ## Why BullMQ?
 
 QueueForge intentionally separates two responsibilities:
 
-```text
+``` text
 PostgreSQL
 → durable source of truth
 
@@ -122,27 +160,37 @@ Redis / BullMQ
 → execution queue and worker coordination
 ```
 
-BullMQ was chosen because it provides a dedicated Redis-backed job execution layer with built-in support for concepts such as retries, backoff, worker coordination, custom job IDs, and stalled-job recovery.
+BullMQ provides a Redis-backed job execution layer with support for
+retries, backoff, worker coordination, deterministic job IDs, and
+stalled-job recovery.
 
-An alternative design could use a PostgreSQL-backed queue such as `pg-boss`, reducing the number of infrastructure components. QueueForge instead keeps the persistence layer and execution queue separate so the project can explicitly explore the failure boundary between a durable relational database and an external message queue.
+An alternative design could use a PostgreSQL-backed queue such as
+`pg-boss`, reducing the number of infrastructure components. QueueForge
+instead keeps the persistence layer and execution queue separate so the
+project can explicitly explore the failure boundary between a durable
+relational database and an external message queue.
 
-The goal is not to claim BullMQ is universally better, but to demonstrate the trade-offs and reliability patterns required when PostgreSQL and Redis participate in the same asynchronous workflow.
+The goal is not to claim BullMQ is universally better, but to
+demonstrate the trade-offs and reliability patterns required when
+PostgreSQL and Redis participate in the same asynchronous workflow.
 
----
+------------------------------------------------------------------------
 
-## Distributed Systems & Reliability Concepts
+# Distributed Systems & Reliability Concepts
 
-### Dual-Write Problem
+## Dual-Write Problem
 
-A single local transaction cannot normally guarantee atomic writes across two independent systems such as PostgreSQL and Redis.
+A single local transaction cannot normally guarantee atomic writes
+across two independent systems such as PostgreSQL and Redis.
 
-QueueForge avoids performing the database write and queue publish directly inside the same API request flow.
+QueueForge avoids performing the database write and queue publish
+directly inside the same API request flow.
 
-### Transactional Outbox
+## Transactional Outbox
 
 `POST /jobs` creates:
 
-```text
+``` text
 Job
 +
 OutboxEvent
@@ -152,7 +200,7 @@ inside one Prisma transaction.
 
 Therefore:
 
-```text
+``` text
 transaction succeeds
 → both records exist
 
@@ -160,67 +208,67 @@ transaction fails
 → neither record exists
 ```
 
-If Redis is temporarily unavailable after the transaction commits, the OutboxEvent remains stored in PostgreSQL and can be retried later.
+If Redis is temporarily unavailable after the transaction commits, the
+OutboxEvent remains stored in PostgreSQL and can be retried later.
 
-### Publisher Claiming
+## Publisher Claiming
 
 Multiple Publisher instances may poll PostgreSQL simultaneously.
 
 Without coordination:
 
-```text
+``` text
 Publisher A → sees Event X
 Publisher B → sees Event X
 ```
 
 Both could attempt to publish the same event.
 
-QueueForge uses an atomic compare-and-set style `updateMany()` operation so only one Publisher successfully claims a specific OutboxEvent.
+QueueForge uses an atomic compare-and-set style `updateMany()` operation
+so only one Publisher successfully claims a specific OutboxEvent.
 
-```text
+``` text
 Publisher A → claim → count = 1 ✅
 Publisher B → claim → count = 0 ❌
 ```
 
-The second Publisher skips the event.
-
-### Lease-Based Crash Recovery
+## Lease-Based Crash Recovery
 
 A claim stores:
 
-```text
+``` text
 claimedAt
 ```
 
 Claims older than **30 seconds** are considered stale.
 
-This handles scenarios such as:
-
-```text
+``` text
 Publisher claims Event X
 ↓
 Publisher crashes 💥
 ↓
-claim cannot be manually released
+claim remains stored
 ↓
 30-second lease expires
 ↓
 another Publisher can reclaim Event X
 ```
 
-This prevents events from remaining permanently locked after a process crash.
+This prevents events from remaining permanently locked after a Publisher
+crash.
 
-### Idempotent Queue Publishing
+## Idempotent Queue Publishing
 
-Each BullMQ job uses the OutboxEvent ID as its deterministic BullMQ `jobId`.
+Each BullMQ job uses the OutboxEvent ID as its deterministic BullMQ
+`jobId`.
 
-```ts
+``` ts
 jobId: event.id
 ```
 
 This protects an important failure window:
 
-```text
+``` text
 Publisher queue.add() succeeds ✅
 ↓
 Publisher crashes before published=true 💥
@@ -230,25 +278,24 @@ OutboxEvent is retried
 same BullMQ jobId is used again
 ```
 
-Repeated publishing attempts therefore target the same queue-job identity instead of intentionally creating independent duplicate jobs while BullMQ retains that job record.
+Repeated publishing attempts therefore target the same queue-job
+identity instead of intentionally creating independent duplicate jobs
+while BullMQ retains that job record.
 
-### At-Least-Once Processing
+## At-Least-Once Processing
 
-Background job systems must assume that a job may be delivered or executed more than once.
+Background job systems must assume that a job may be delivered or
+executed more than once.
 
-The Worker therefore checks whether the persisted Job is already:
+The Worker checks whether the persisted Job is already `COMPLETED` and
+skips execution when appropriate.
 
-```text
-COMPLETED
-```
-
-and skips execution when appropriate.
-
-However, this does **not** provide universal exactly-once guarantees for external side effects.
+This does **not** provide universal exactly-once guarantees for external
+side effects.
 
 For example:
 
-```text
+``` text
 email sent successfully ✅
 ↓
 Worker crashes before saving COMPLETED 💥
@@ -258,87 +305,62 @@ BullMQ retries
 email may be sent again
 ```
 
-Generic SMTP delivery does not provide application-level exactly-once semantics.
+Generic SMTP delivery does not provide application-level exactly-once
+semantics.
 
-QueueForge therefore follows an **at-least-once processing model** and explicitly documents this limitation.
+QueueForge therefore follows an **at-least-once processing model**.
 
-### Retries and Backoff
+## Retries and Backoff
 
 QueueForge has two independent retry layers.
 
-#### Publisher retries
+### Publisher retries
 
-These handle failures while moving an OutboxEvent from PostgreSQL to BullMQ.
+These handle failures while moving an OutboxEvent from PostgreSQL to
+BullMQ.
 
 Examples:
 
-```text
+``` text
 Redis unavailable
 invalid OutboxEvent payload
 referenced Job missing
 ```
 
-#### Worker retries
+### Worker retries
 
 These handle failures while executing the actual business job.
 
 BullMQ jobs are configured with:
 
-```text
+``` text
 3 total attempts
 2-second fixed backoff
 ```
 
-Example:
-
-```text
-attempt 1 → failure
-↓
-RETRYING
-↓
-2 seconds
-↓
-attempt 2
-```
-
-### Poison Events
+## Poison Events
 
 An OutboxEvent that can never be published must not retry forever.
 
-Publisher failures update:
-
-```text
-attempts += 1
-lastError = error message
-claimedAt = null
-```
-
 After **5 failed Publisher attempts**:
 
-```text
+``` text
 failed = true
 ```
 
-Once an event reaches this state, the normal Publisher query excludes it:
+The event remains persisted in PostgreSQL for inspection but is excluded
+from normal publishing.
 
-```text
-published = false
-failed = true
-```
+QueueForge currently does not expose an admin endpoint or CLI command
+for manually replaying failed outbox events.
 
-The event therefore remains persisted in PostgreSQL for inspection, but it is **not retried automatically anymore**.
-
-QueueForge currently does not expose an admin endpoint or CLI command for manually replaying failed outbox events. Operational recovery would currently require inspecting and deliberately resetting or handling the failed database record.
-
-This is an intentional current project limitation and avoids silently retrying a permanently invalid event forever.
-
-### Graceful Shutdown
+## Graceful Shutdown
 
 All runtime services handle `SIGINT` and `SIGTERM`.
 
-#### API
+### API
 
-```text
+``` text
 stop accepting HTTP traffic
 ↓
 allow active requests to finish
@@ -348,9 +370,9 @@ disconnect Prisma
 exit
 ```
 
-#### Publisher
+### Publisher
 
-```text
+``` text
 stop starting new polling cycles
 ↓
 finish current cycle
@@ -360,9 +382,9 @@ close BullMQ Queue
 disconnect Prisma
 ```
 
-#### Worker
+### Worker
 
-```text
+``` text
 stop accepting new BullMQ jobs
 ↓
 allow active work to finish
@@ -372,53 +394,53 @@ disconnect Prisma
 exit
 ```
 
-This prevents dependencies from being closed while active work still needs them.
+------------------------------------------------------------------------
 
----
+# Services
 
-## Services
-
-### API
+## API
 
 The Express API accepts new jobs and exposes persisted job state.
 
-| Method | Endpoint    | Description                          |
-| ------ | ----------- | ------------------------------------ |
-| `GET`  | `/health`   | API health check                     |
-| `POST` | `/jobs`     | Create a new asynchronous job        |
-| `GET`  | `/jobs/:id` | Retrieve persisted job status/result |
+  Method   Endpoint      Description
+  -------- ------------- --------------------------------------
+  `GET`    `/health`     API health check
+  `POST`   `/jobs`       Create an asynchronous job
+  `GET`    `/jobs/:id`   Retrieve persisted job status/result
 
 A successful creation returns:
 
-```text
+``` text
 202 Accepted
 ```
 
-because the request has been accepted for asynchronous processing but the actual work may not yet be complete.
+because the request has been accepted for asynchronous processing but
+the actual work may not yet be complete.
 
-### Publisher
+## Publisher
 
-The Publisher is responsible for moving durable OutboxEvents into BullMQ.
+The Publisher is responsible for moving durable OutboxEvents into
+BullMQ.
 
 It:
 
-* polls unpublished events every second
-* processes up to 10 events per cycle
-* atomically claims events
-* supports multiple Publisher instances
-* recovers stale claims after 30 seconds
-* publishes jobs to the BullMQ `jobs` queue
-* records failures and retry attempts
-* stops retrying poison events after 5 failures
-* marks events published only after queue insertion succeeds
+-   polls unpublished events every second
+-   processes up to 10 events per cycle
+-   atomically claims events
+-   supports multiple Publisher instances
+-   recovers stale claims after 30 seconds
+-   publishes jobs to the BullMQ `jobs` queue
+-   records failures and retry attempts
+-   stops retrying poison events after 5 failures
+-   marks events published only after queue insertion succeeds
 
-### Worker
+## Worker
 
 The Worker consumes BullMQ jobs and executes the correct handler.
 
 Normal lifecycle:
 
-```text
+``` text
 WAITING
 ↓
 PROCESSING
@@ -428,7 +450,7 @@ COMPLETED
 
 Failure lifecycle:
 
-```text
+``` text
 PROCESSING
 ↓
 RETRYING
@@ -442,15 +464,15 @@ FAILED
 
 Each processing attempt increments the persisted Job attempt counter.
 
----
+------------------------------------------------------------------------
 
-## Supported Job Types
+# Supported Job Types
 
-### SEND_EMAIL
+## SEND_EMAIL
 
 Example request:
 
-```json
+``` json
 {
   "type": "SEND_EMAIL",
   "payload": {
@@ -465,25 +487,17 @@ The Worker sends email using **Nodemailer** over SMTP.
 
 The Docker development environment uses **Mailpit**.
 
-Successful result:
-
-```json
-{
-  "messageId": "<generated-message-id>"
-}
-```
-
 Mailpit UI:
 
-```text
+``` text
 http://localhost:8025
 ```
 
-### GENERATE_REPORT
+## GENERATE_REPORT
 
 Example request:
 
-```json
+``` json
 {
   "type": "GENERATE_REPORT",
   "payload": {
@@ -494,41 +508,35 @@ Example request:
 
 The Worker generates a CSV report at:
 
-```text
+``` text
 storage/reports/{month}.csv
 ```
 
-Successful result:
+The report uses a deterministic monthly file path, so rerunning the same
+month overwrites the same report file rather than creating additional
+copies.
 
-```json
-{
-  "filePath": "/app/storage/reports/2026-09.csv"
-}
-```
+------------------------------------------------------------------------
 
-The report uses a deterministic monthly file path, so rerunning the same month overwrites the same report file rather than creating additional copies.
+# Job Statuses
 
----
+  Status         Meaning
+  -------------- -----------------------------------------------
+  `WAITING`      Job was accepted and is waiting for execution
+  `PROCESSING`   Worker is currently executing the job
+  `RETRYING`     Previous execution failed but attempts remain
+  `COMPLETED`    Handler completed and result was persisted
+  `FAILED`       Maximum execution attempts were reached
 
-## Job Statuses
+------------------------------------------------------------------------
 
-| Status       | Meaning                                       |
-| ------------ | --------------------------------------------- |
-| `WAITING`    | Job was accepted and is waiting for execution |
-| `PROCESSING` | Worker is currently executing the job         |
-| `RETRYING`   | Previous execution failed but attempts remain |
-| `COMPLETED`  | Handler completed and result was persisted    |
-| `FAILED`     | Maximum execution attempts were reached       |
+# Data Model
 
----
-
-## Data Model
-
-### Job
+## Job
 
 Important fields:
 
-```text
+``` text
 id
 type
 payload
@@ -542,16 +550,16 @@ updatedAt
 
 Supported types:
 
-```text
+``` text
 SEND_EMAIL
 GENERATE_REPORT
 ```
 
-### OutboxEvent
+## OutboxEvent
 
 Important fields:
 
-```text
+``` text
 id
 type
 payload
@@ -566,15 +574,15 @@ createdAt
 
 Current event type:
 
-```text
+``` text
 JOB_CREATED
 ```
 
----
+------------------------------------------------------------------------
 
-## Monorepo Structure
+# Monorepo Structure
 
-```text
+``` text
 queueforge/
 ├── apps/
 │   ├── api/
@@ -604,6 +612,22 @@ queueforge/
 │       ├── migrations
 │       └── shared Prisma client factory
 │
+├── k8s/
+│   ├── api-deployment.yaml
+│   ├── api-service.yaml
+│   ├── configmap.yaml
+│   ├── secret.yaml
+│   ├── postgres-deployment.yaml
+│   ├── postgres-service.yaml
+│   ├── postgres-pvc.yaml
+│   ├── postgres-secret.yaml
+│   ├── redis-deployment.yaml
+│   ├── redis-service.yaml
+│   ├── publisher-deployment.yaml
+│   ├── worker-deployment.yaml
+│   ├── mailpit-deployment.yaml
+│   └── mailpit-service.yaml
+│
 ├── Dockerfile
 ├── compose.yml
 ├── .env.example
@@ -611,107 +635,87 @@ queueforge/
 └── tsconfig.base.json
 ```
 
----
+------------------------------------------------------------------------
 
-## Tech Stack
+# Tech Stack
 
-* Node.js 22
-* TypeScript
-* Express 5
-* PostgreSQL 18
-* Prisma 7
-* Redis
-* BullMQ
-* ioredis
-* Zod
-* Nodemailer
-* Mailpit
-* Vitest
-* Supertest
-* Docker
-* Docker Compose
-* npm workspaces
+-   Node.js 22
+-   TypeScript
+-   Express 5
+-   PostgreSQL 18
+-   Prisma 7
+-   Redis
+-   BullMQ
+-   ioredis
+-   Zod
+-   Nodemailer
+-   Mailpit
+-   Vitest
+-   Supertest
+-   Docker
+-   Docker Compose
+-   Kubernetes
+-   kind
+-   npm workspaces
 
----
+------------------------------------------------------------------------
 
-## Running Locally
+# Running Locally with Docker Compose
 
-### Prerequisites
+Docker Compose is the primary local-development environment.
+
+## Prerequisites
 
 Install:
 
-* Node.js
-* npm
-* Docker
-* Docker Compose
+-   Node.js
+-   npm
+-   Docker
+-   Docker Compose
 
-### Install Dependencies
+## Install Dependencies
 
-```bash
+``` bash
 npm ci
 ```
 
-### Environment Variables
+## Environment Variables
 
 Copy:
 
-```bash
+``` bash
 cp .env.example .env
-```
-
-Example variables:
-
-```env
-POSTGRES_USER=queueforge
-POSTGRES_PASSWORD=change-me
-POSTGRES_DB=queueforge
-
-DATABASE_URL=postgresql://queueforge:change-me@postgres:5432/queueforge?schema=public
-
-REDIS_HOST=redis
-REDIS_PORT=6379
-
-SMTP_HOST=mailpit
-SMTP_PORT=1025
-
-PORT=3000
 ```
 
 Inside the Compose network, services communicate using Docker DNS names:
 
-```text
+``` text
 postgres:5432
 redis:6379
 mailpit:1025
 ```
 
-From the host machine PostgreSQL is exposed at:
+PostgreSQL is exposed to the host at:
 
-```text
+``` text
 localhost:5433
 ```
 
----
-
 ## Database Migrations
 
-Database migrations are currently run separately rather than automatically during Compose startup.
+Database migrations are currently run separately rather than
+automatically during Compose startup.
 
-First start the infrastructure:
+Start the infrastructure:
 
-```bash
+``` bash
 docker compose up -d postgres redis mailpit
 ```
 
-Then run Prisma migrations from:
+Then run Prisma migrations from `packages/database` using the PostgreSQL
+port exposed to the host:
 
-```text
-packages/database
-```
-
-using the PostgreSQL port exposed to the host:
-
-```bash
+``` bash
 cd packages/database
 
 DATABASE_URL="postgresql://queueforge:<password>@localhost:5433/queueforge?schema=public" \
@@ -722,19 +726,17 @@ npx prisma generate
 cd ../..
 ```
 
-Replace `<password>` with the password configured in your `.env`.
-
----
+Replace `<password>` with the password configured in `.env`.
 
 ## Start the Complete Stack
 
-```bash
+``` bash
 docker compose up --build
 ```
 
 This starts:
 
-```text
+``` text
 PostgreSQL
 Redis
 Mailpit
@@ -745,23 +747,233 @@ Worker
 
 API:
 
-```text
+``` text
 http://localhost:3000
 ```
 
 Mailpit:
 
-```text
+``` text
 http://localhost:8025
 ```
 
----
+------------------------------------------------------------------------
 
-## API Examples
+# Kubernetes
 
-### Create Email Job
+QueueForge also includes a local Kubernetes deployment using **kind**.
 
-```bash
+The Kubernetes environment is used to demonstrate container
+orchestration, service discovery, scaling, health checks, persistent
+storage, and failure recovery.
+
+## Kubernetes Components
+
+``` text
+Deployment
+├── API
+│   └── 2 replicas
+│
+├── Worker
+│   └── 3 replicas
+│
+├── Publisher
+│   └── 1 replica
+│
+├── PostgreSQL
+│   └── 1 replica + PVC
+│
+├── Redis
+│   └── 1 replica
+│
+└── Mailpit
+    └── 1 replica
+```
+
+Services provide stable DNS names inside the cluster:
+
+``` text
+queueforge-api
+postgres
+redis
+mailpit
+```
+
+The application containers receive configuration through Kubernetes
+`ConfigMap` and `Secret` resources.
+
+PostgreSQL uses a Kubernetes `PersistentVolumeClaim` so database state
+is stored outside the PostgreSQL Pod lifecycle.
+
+Redis does not use a PVC in this setup. PostgreSQL is the durable source
+of truth for QueueForge jobs and OutboxEvents, while Redis/BullMQ acts
+as the execution queue and worker coordination layer.
+
+## Local kind Workflow
+
+Build an application image:
+
+``` bash
+docker build -t queueforge-worker:latest .
+```
+
+Load it into the kind cluster:
+
+``` bash
+kind load docker-image queueforge-worker:latest --name queueforge
+```
+
+Restart the affected Deployment:
+
+``` bash
+kubectl rollout restart deployment/worker
+kubectl rollout status deployment/worker
+```
+
+The same image-build/load/restart workflow applies when changing the
+other application images.
+
+## Kubernetes Scaling
+
+The Worker Deployment runs three replicas:
+
+``` text
+worker Pod 1
+worker Pod 2
+worker Pod 3
+        ↓
+   BullMQ / Redis
+```
+
+Multiple Worker Pods consume the same BullMQ queue.
+
+When jobs are submitted, BullMQ distributes available queue work among
+the workers.
+
+Kubernetes controls **how many Worker Pods exist**.
+
+BullMQ/Redis controls **which Worker receives a queue job**.
+
+The distribution is not required to be perfectly equal.
+
+## Health Probes
+
+The API exposes `/health`.
+
+Kubernetes uses it for both readiness and liveness probes.
+
+### Readiness
+
+``` text
+Pod starts
+↓
+readiness probe
+↓
+/health
+↓
+healthy → Pod receives Service traffic
+```
+
+If readiness fails:
+
+``` text
+Pod remains Running
++
+Pod becomes NotReady
++
+Service removes it from endpoints
+```
+
+This was verified experimentally by temporarily using an invalid
+readiness path.
+
+### Liveness
+
+Liveness answers a different question:
+
+``` text
+Is the application process still alive?
+```
+
+If the liveness probe repeatedly fails, Kubernetes restarts the
+container.
+
+## Kubernetes Self-Healing
+
+Deleting a Worker Pod manually:
+
+``` bash
+kubectl delete pod <worker-pod>
+```
+
+causes the Deployment to create a replacement Pod.
+
+This demonstrates Kubernetes self-healing:
+
+``` text
+Worker Pod
+   ↓
+deleted
+   ↓
+Deployment detects replica count
+   ↓
+replacement Pod
+```
+
+## Worker Crash Recovery
+
+QueueForge also tested an actual failure while a job was being
+processed.
+
+The experiment was:
+
+``` text
+Worker receives job
+↓
+job enters processing
+↓
+Worker Pod is deleted
+↓
+Kubernetes creates replacement Worker Pod
+↓
+BullMQ recovers the unfinished queue job
+↓
+replacement Worker processes the job
+↓
+PostgreSQL job becomes COMPLETED
+```
+
+The tested job finished with:
+
+``` text
+status: COMPLETED
+attempts: 2
+```
+
+This demonstrates the separation of responsibilities:
+
+``` text
+Kubernetes
+→ recovers the compute instance / Pod
+
+BullMQ
+→ recovers unfinished queue work
+
+PostgreSQL
+→ persists application job state
+```
+
+The experiment intentionally killed the Worker before the external email
+side effect, so it demonstrated queue recovery rather than duplicate
+SMTP delivery.
+
+------------------------------------------------------------------------
+
+# API Examples
+
+## Create Email Job
+
+``` bash
 curl -X POST http://localhost:3000/jobs \
   -H "Content-Type: application/json" \
   -d '{
@@ -776,7 +988,7 @@ curl -X POST http://localhost:3000/jobs \
 
 Example response:
 
-```json
+``` json
 {
   "message": "Job accepted",
   "jobId": "<uuid>",
@@ -785,9 +997,9 @@ Example response:
 }
 ```
 
-### Create Report Job
+## Create Report Job
 
-```bash
+``` bash
 curl -X POST http://localhost:3000/jobs \
   -H "Content-Type: application/json" \
   -d '{
@@ -798,49 +1010,50 @@ curl -X POST http://localhost:3000/jobs \
   }'
 ```
 
-### Check Job Status
+## Check Job Status
 
-```bash
+``` bash
 curl http://localhost:3000/jobs/<jobId>
 ```
 
 A completed job contains its persisted result.
 
----
+------------------------------------------------------------------------
 
-## Testing
+# Testing
 
-QueueForge currently has **15 automated tests** across the API, Publisher, and Worker.
+QueueForge currently has **15 automated tests** across the API,
+Publisher, and Worker.
 
 Run all workspace tests:
 
-```bash
+``` bash
 npm test --workspaces --if-present
 ```
 
 The suite covers:
 
-* API health check
-* invalid job validation
-* atomic Job + OutboxEvent creation
-* job lookup success
-* job lookup 404
-* lost Publisher claim protection
-* successful OutboxEvent publishing
-* retryable Publisher failures
-* terminal poison-event handling
-* completed-job replay protection
-* successful SEND_EMAIL execution
-* successful GENERATE_REPORT execution
-* handler failure behavior
-* Worker `RETRYING` state
-* Worker terminal `FAILED` state
+-   API health check
+-   invalid job validation
+-   atomic Job + OutboxEvent creation
+-   job lookup success
+-   job lookup 404
+-   lost Publisher claim protection
+-   successful OutboxEvent publishing
+-   retryable Publisher failures
+-   terminal poison-event handling
+-   completed-job replay protection
+-   successful `SEND_EMAIL` execution
+-   successful `GENERATE_REPORT` execution
+-   handler failure behavior
+-   Worker `RETRYING` state
+-   Worker terminal `FAILED` state
 
 The automated suite mainly uses mocked infrastructure dependencies.
 
 The complete:
 
-```text
+``` text
 API
 → PostgreSQL
 → Publisher
@@ -850,58 +1063,90 @@ API
 
 flow has also been manually smoke-tested with both supported job types.
 
----
+The Kubernetes environment has additionally been manually tested for:
 
-## Type Checking
+-   multiple Worker replicas
+-   Worker Pod self-healing
+-   Worker crash recovery
+-   BullMQ redelivery after Worker failure
+-   API readiness behavior
+-   API liveness configuration
+-   PostgreSQL persistence through a PVC
 
-```bash
+------------------------------------------------------------------------
+
+# Type Checking
+
+``` bash
 npx tsc --noEmit -p apps/api/tsconfig.json
 npx tsc --noEmit -p apps/publisher/tsconfig.json
 npx tsc --noEmit -p apps/worker/tsconfig.json
 ```
 
----
+------------------------------------------------------------------------
 
-## Current Limitations
+# Current Limitations
 
-QueueForge is a portfolio-scale distributed job-processing system rather than a production hosting configuration.
+QueueForge is a portfolio-scale distributed job-processing system rather
+than a production hosting configuration.
 
 Current limitations include:
 
-* database migrations are not automatically executed during Compose startup
-* Docker Compose currently runs development commands using `tsx watch`
-* SMTP side effects have at-least-once rather than exactly-once guarantees
-* failed poison OutboxEvents remain persisted with `failed = true`; there is currently no admin endpoint or CLI for manual replay
-* automated tests mainly mock PostgreSQL, Redis, and SMTP instead of running full infrastructure integration tests
-* outbox polling currently has no dedicated database indexes
-* `OutboxEvent.payload.jobId` is stored inside JSON rather than as a relational foreign key
+-   database migrations are not automatically executed during Compose
+    startup
+-   Docker Compose currently runs development commands using `tsx watch`
+-   SMTP side effects have at-least-once rather than exactly-once
+    guarantees
+-   failed poison OutboxEvents remain persisted with `failed = true`;
+    there is currently no admin endpoint or CLI for manual replay
+-   automated tests mainly mock PostgreSQL, Redis, and SMTP instead of
+    running full infrastructure integration tests
+-   outbox polling currently has no dedicated database indexes
+-   `OutboxEvent.payload.jobId` is stored inside JSON rather than as a
+    relational foreign key
+-   the Kubernetes setup is intended for local demonstration and
+    portfolio purposes rather than a production cloud deployment
+-   Kubernetes application images currently use a local kind
+    image-loading workflow rather than a container registry-based CI/CD
+    pipeline
 
-These limitations are documented intentionally rather than presenting stronger guarantees than the implementation actually provides.
+These limitations are documented intentionally rather than presenting
+stronger guarantees than the implementation provides.
 
----
+------------------------------------------------------------------------
 
-## What This Project Demonstrates
+# What This Project Demonstrates
 
-QueueForge demonstrates practical backend and distributed-systems concepts including:
+QueueForge demonstrates practical backend and distributed-systems
+concepts including:
 
-* asynchronous HTTP processing with `202 Accepted`
-* durable job state
-* background workers
-* Redis-backed queues
-* BullMQ retries and backoff
-* the **dual-write problem**
-* the **Transactional Outbox pattern**
-* **idempotent publishing**
-* **at-least-once processing**
-* **multi-publisher concurrency**
-* **atomic claiming**
-* **lease-based crash recovery**
-* **poison-event handling**
-* persisted job lifecycle transitions
-* graceful shutdown
-* runtime validation with Zod
-* Dockerized multi-service architecture
-* automated testing of both happy paths and failure paths
+-   asynchronous HTTP processing with `202 Accepted`
+-   durable job state
+-   background workers
+-   Redis-backed queues
+-   BullMQ retries and backoff
+-   the **dual-write problem**
+-   the **Transactional Outbox pattern**
+-   **idempotent publishing**
+-   **at-least-once processing**
+-   **multi-publisher concurrency**
+-   **atomic claiming**
+-   **lease-based crash recovery**
+-   **poison-event handling**
+-   persisted job lifecycle transitions
+-   graceful shutdown
+-   runtime validation with Zod
+-   Dockerized multi-service architecture
+-   Kubernetes Deployments and Services
+-   Kubernetes ConfigMaps and Secrets
+-   PostgreSQL persistent storage with PVC
+-   horizontal Worker scaling
+-   readiness and liveness probes
+-   Kubernetes self-healing
+-   queue recovery after Worker failure
+-   automated testing of happy paths and failure paths
+
+------------------------------------------------------------------------
 
 ## License
 
